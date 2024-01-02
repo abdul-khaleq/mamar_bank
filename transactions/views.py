@@ -19,6 +19,9 @@ from transactions.forms import (
 from transactions.models import Transaction, UserBankAccount
 from .models import Bankrupt
 
+from django.conf import settings
+from django.core.mail import send_mail
+
 class TransactionCreateMixin(LoginRequiredMixin, CreateView):
     template_name = 'transactions/transaction_form.html'
     model = Transaction
@@ -64,50 +67,6 @@ class DepositMoneyView(TransactionCreateMixin):
             f'{"{:,.2f}".format(float(amount))}$ was deposited to your account successfully'
         )
         return super().form_valid(form)
-
-
-
-
-from django.contrib import messages
-from django.shortcuts import get_object_or_404
-from django.urls import reverse_lazy
-from django.views.generic.edit import FormView
-from .forms import WithdrawForm
-from .models import Transaction
-
-class WiView(FormView):
-    form_class = WithdrawForm
-    template_name = 'your_template_name.html'  # Replace with the actual template name
-    success_url = reverse_lazy('success_url_name')  # Replace with the actual success URL name
-
-    def form_valid(self, form):
-        amount = form.cleaned_data.get('amount')
-        current_user_account = get_object_or_404(UserBankAccount, user=self.request.user)
-        
-        if not current_user_account.transaction_set.filter(is_bankrupt=True).exists():
-            withdrawal_transaction = Transaction(
-                account=current_user_account,
-                amount=amount,
-                balance_after_transaction=current_user_account.balance - amount,
-                transaction_type=Transaction.WITHDRAWAL,
-            )
-            
-            current_user_account.balance -= amount
-            current_user_account.save(update_fields=['balance'])
-            
-            withdrawal_transaction.save()
-            
-            messages.success(self.request, f'Successfully withdrawn {"{:,.2f}".format(float(amount))}$ from your account')
-        else:
-            messages.error(self.request, 'The bank is bankrupt')
-            
-        return super().form_valid(form)
-
-
-
-
-
-
 
 class WithdrawMoneyView(TransactionCreateMixin):
     form_class = WithdrawForm
@@ -237,6 +196,11 @@ class TransferMoneyView(View):
                 to_user.balance+=amount
                 to_user.save()
                 messages.success(request, "Successfully Transfered!")
+                subject = 'welcome to Mamar Bank'
+                message = f'Hi {request.user.username}, You successfully tranfer {amount} to {to_user_id}.'
+                email_from = settings.EMAIL_HOST_USER
+                recipient_list = [request.user.email, ]
+                send_mail( subject, message, email_from, recipient_list )
             except UserBankAccount.DoesNotExist:
                 messages.error(request, 'User Account does not exist!')
             return render(request, self.template_name, {'form':form, 'title':'Transfer Money'})
