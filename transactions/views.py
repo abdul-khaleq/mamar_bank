@@ -14,10 +14,10 @@ from transactions.forms import (
     DepositForm,
     WithdrawForm,
     LoanRequestForm,
-    BalanceTransferForm,
-    TransferForm
+    TransferMoneyForm,
 )
-from transactions.models import Transaction
+from transactions.models import Transaction, UserBankAccount
+from .models import Bankrupt
 
 class TransactionCreateMixin(LoginRequiredMixin, CreateView):
     template_name = 'transactions/transaction_form.html'
@@ -37,9 +37,7 @@ class TransactionCreateMixin(LoginRequiredMixin, CreateView):
         context.update({
             'title': self.title
         })
-
         return context
-
 
 class DepositMoneyView(TransactionCreateMixin):
     form_class = DepositForm
@@ -61,13 +59,54 @@ class DepositMoneyView(TransactionCreateMixin):
                 'balance'
             ]
         )
-
         messages.success(
             self.request,
             f'{"{:,.2f}".format(float(amount))}$ was deposited to your account successfully'
         )
-
         return super().form_valid(form)
+
+
+
+
+from django.contrib import messages
+from django.shortcuts import get_object_or_404
+from django.urls import reverse_lazy
+from django.views.generic.edit import FormView
+from .forms import WithdrawForm
+from .models import Transaction
+
+class WiView(FormView):
+    form_class = WithdrawForm
+    template_name = 'your_template_name.html'  # Replace with the actual template name
+    success_url = reverse_lazy('success_url_name')  # Replace with the actual success URL name
+
+    def form_valid(self, form):
+        amount = form.cleaned_data.get('amount')
+        current_user_account = get_object_or_404(UserBankAccount, user=self.request.user)
+        
+        if not current_user_account.transaction_set.filter(is_bankrupt=True).exists():
+            withdrawal_transaction = Transaction(
+                account=current_user_account,
+                amount=amount,
+                balance_after_transaction=current_user_account.balance - amount,
+                transaction_type=Transaction.WITHDRAWAL,
+            )
+            
+            current_user_account.balance -= amount
+            current_user_account.save(update_fields=['balance'])
+            
+            withdrawal_transaction.save()
+            
+            messages.success(self.request, f'Successfully withdrawn {"{:,.2f}".format(float(amount))}$ from your account')
+        else:
+            messages.error(self.request, 'The bank is bankrupt')
+            
+        return super().form_valid(form)
+
+
+
+
+
 
 
 class WithdrawMoneyView(TransactionCreateMixin):
@@ -80,17 +119,15 @@ class WithdrawMoneyView(TransactionCreateMixin):
 
     def form_valid(self, form):
         amount = form.cleaned_data.get('amount')
-
-        self.request.user.account.balance -= form.cleaned_data.get('amount')
-        # balance = 300
-        # amount = 5000
-        self.request.user.account.save(update_fields=['balance'])
-
-        messages.success(
-            self.request,
-            f'Successfully withdrawn {"{:,.2f}".format(float(amount))}$ from your account'
-        )
-
+        current_user = Bankrupt.objects.first()
+        print(current_user.is_bankrupt)
+        if current_user.is_bankrupt == False:
+            self.request.user.account.balance -= form.cleaned_data.get('amount')
+            self.request.user.account.save(update_fields=['balance'])
+            messages.success(self.request, f'Successfully withdrawn {"{:,.2f}".format(float(amount))}$ from your account')
+            
+        else:
+            messages.error(self.request, f'The bank is bankrupt')
         return super().form_valid(form)
 
 class LoanRequestView(TransactionCreateMixin):
@@ -111,7 +148,6 @@ class LoanRequestView(TransactionCreateMixin):
             self.request,
             f'Loan request for {"{:,.2f}".format(float(amount))}$ submitted successfully'
         )
-
         return super().form_valid(form)
     
 class TransactionReportView(LoginRequiredMixin, ListView):
@@ -144,10 +180,8 @@ class TransactionReportView(LoginRequiredMixin, ListView):
         context.update({
             'account': self.request.user.account
         })
-
         return context
     
-        
 class PayLoanView(LoginRequiredMixin, View):
     def get(self, request, loan_id):
         loan = get_object_or_404(Transaction, id=loan_id)
@@ -173,7 +207,6 @@ class PayLoanView(LoginRequiredMixin, View):
 
         return redirect('loan_list')
 
-
 class LoanListView(LoginRequiredMixin,ListView):
     model = Transaction
     template_name = 'transactions/loan_request.html'
@@ -185,52 +218,26 @@ class LoanListView(LoginRequiredMixin,ListView):
         print(queryset)
         return queryset
 
-# class Transfer_amountView(View):
-#     template_name = 'transactions/transfer_amount.html'
-#     title = 'Transfer Money'
-
-#     def get(self, request):
-#         form = TransferForm()
-#         return render(request, self.template_name, {'form': form})
-#     def post(self, request):
-#         form = TransferForm(request.POST)
-#         if form.is_valid():
-#             account_number = form.cleaned_data.get('account')
-#             amount = form.cleaned_data.get('amount')
-#             print(account_number)
-#             print(amount)
-#             user_account = request.user.account
-#             return redirect('profile')
-#         return render(request, self.template_name, {'form': form})
-
-class Transfer_amountView(View):
-    template_name = 'transactions/transfer_amount.html'
-    title = 'Transfer Money'
-    # succ
-
-    def get_initial(self):
-        initial = {'transaction_type': BALANCE_TRANSFER}
-        return initial
+class TransferMoneyView(View):
+    template_name = 'transactions/transfer_money.html'
     def get(self, request):
-        form = TransferForm()
-        return render(request, self.template_name, {'form': form})
-    def form_valid(self, form):
-        account = form.cleaned_data.get('account')
-        amount = form.cleaned_data.get('amount')
-        print()
-        self.request.user.account.balance -= form.cleaned_data.get('amount')
-        # balance = 300
-        # amount = 5000
-        self.request.user.account.save(update_fields=['balance'])
-        return super().form_valid(form)
+        form = TransferMoneyForm()
+        return render(request, self.template_name, {'form':form})
     def post(self, request):
-        form = TransferForm(request.POST)
+        form = TransferMoneyForm(request.POST)
         if form.is_valid():
-            account_number = form.cleaned_data.get('account')
-            amount = form.cleaned_data.get('amount')
-            print(f"Account Number: {account_number}")
-            print(f"Amount: {amount}")
-            user_account = request.user.account
-            return redirect('profile')
-        print(f"Form Errors: {form.errors}")
-        return render(request, self.template_name, {'form': form})
+            amount = form.cleaned_data['amount']
+            to_user_id = form.cleaned_data['to_user_id']
+            current_user = request.user.account
+
+            try:
+                to_user =UserBankAccount.objects.get(account_no=to_user_id)
+                current_user.balance-=amount
+                current_user.save()
+                to_user.balance+=amount
+                to_user.save()
+                messages.success(request, "Successfully Transfered!")
+            except UserBankAccount.DoesNotExist:
+                messages.error(request, 'User Account does not exist!')
+            return render(request, self.template_name, {'form':form, 'title':'Transfer Money'})
+

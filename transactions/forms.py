@@ -58,58 +58,7 @@ class LoanRequestForm(TransactionForm):
     def clean_amount(self):
         amount = self.cleaned_data.get('amount')
         return amount
-
-class BalanceTransferForm(TransactionForm):
-    def clean_amount(self):
-        account = self.account
-        min_transfer_amount = 500
-        max_transfer_amount = 10000
-        balance = account.balance
-        amount = self.cleaned_data.get('amount')
-        accountNo = self.cleaned_data.get('accountNo')
-        print(accountNo)
-        if amount < min_transfer_amount:
-            raise forms.ValidationError(
-                f'You can transfer at least {min_transfer_amount} $'
-            )
-
-        if amount > max_transfer_amount:
-            raise forms.ValidationError(
-                f'You can transfer at most {max_transfer_amount} $'
-            )
-
-        if amount > balance:
-            raise forms.ValidationError(
-                f'You have {balance} $ in your account. '
-                'You can not transfer more than your account balance'
-            )
-        return amount
-
-class TransferForm(forms.ModelForm):
-    class Meta:
-        model = Transaction
-        fields = ['account', 'amount', 'transaction_type']
-        
-    def clean(self):
-        cleaned_data = super().clean()
-        account = cleaned_data.get('account')
-        amount = cleaned_data.get('amount')
-
-        min_transfer_amount = 1000
-        if not account:
-            raise forms.ValidationError('Invalid account.')
-
-        user_account = account
-        balance = user_account.balance 
-
-        if amount < min_transfer_amount:
-            raise forms.ValidationError(
-                f'You can transfer at least {min_transfer_amount} $'
-            )
-        if amount > balance:
-            raise forms.ValidationError(
-                f'You have {balance} $ in your account. 'f'You have {balance} $ in your account. '
-                'You cannot transfer more than your account balance'
-            )
-
-        return cleaned_data
+    
+class TransferMoneyForm(forms.Form):
+    amount = forms.DecimalField()
+    to_user_id = forms.IntegerField()
